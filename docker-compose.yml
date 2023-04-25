@@ -1,0 +1,83 @@
+services:
+  adminer:
+    image: adminer:latest
+    restart: always
+    ports:
+        - 8080:8080
+    networks:
+      - js-develop
+  database:
+    image: mysql:latest
+    container_name: js-database
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-aa}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1234}
+    ports:
+      # host port, container port
+      - ${DATABASE_PORT}:${DATABASE_PORT}
+    volumes:
+      - database-data:/usr/src/data
+    networks:
+      - js-develop
+    healthcheck:
+      test: "/usr/bin/mysql --user=root --password=1234 --execute \"Select 1;\""
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+    container_name: js-backend-1
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DATABASE_HOST: ${DATABASE_HOST:-database}
+      JWT_SECRET_TOKEN: ${JWT_SECRET_TOKEN:-ty48921bv}
+      CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-"http([s])?:\/\/localhost:3002"}
+      BACKEND_START_COMMAND: ${BACKEND_START_COMMAND:-npm run start}
+    ports:
+      - ${SERVER_PORT}:${SERVER_PORT}
+    networks:
+      - js-develop
+    healthcheck:
+      test: curl --fail http://localhost:3001 || exit 1
+      interval: 10s
+      retries: 5
+      start_period: 20s
+      timeout: 10s
+    volumes:
+      - backend-data:/usr/src/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./frontend/Dockerfile
+    container_name: js-frontend-1
+    ports:
+      - ${CLIENT_PORT}:${CLIENT_PORT}
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      SERVER_ORIGIN: ${SERVER_ORIGIN:-http://localhost:3001}
+      NODE_ENV: ${NODE_ENV:-development}
+      FRONTEND_START_COMMAND: ${FRONTEND_START_COMMAND:-npm run build}
+    networks:
+      - js-develop
+    healthcheck:
+      test: curl --fail http://localhost:3002 || exit 1
+      interval: 180s
+      retries: 5
+      start_period: 60s
+      timeout: 10s
+
+networks:
+  js-develop:
+    driver: bridge
+
+volumes:
+  database-data:
+  backend-data:
